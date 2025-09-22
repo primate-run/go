@@ -2,6 +2,7 @@ package route
 
 import (
 	"github.com/primate-run/go/core"
+	"github.com/primate-run/go/postlude"
 	"github.com/primate-run/go/route/internal/registry"
 )
 
@@ -17,3 +18,7 @@ func Head(h Handler) Handler    { return registry.Register("HEAD", h) }
 func Connect(h Handler) Handler { return registry.Register("CONNECT", h) }
 func Options(h Handler) Handler { return registry.Register("OPTIONS", h) }
 func Trace(h Handler) Handler   { return registry.Register("TRACE", h) }
+
+func Commit() {
+	postlude.Install()
+}

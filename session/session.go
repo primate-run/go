@@ -1,4 +1,4 @@
-package core
+package session
 
 import (
 	"encoding/json"
@@ -36,7 +36,6 @@ func Session() SessionType {
 
 		Get: func() SessionData {
 			data := make(core.Dict)
-			// Invoke the JS function to get the JSON string
 			raw := session.Get("get").Invoke().String()
 			_ = json.Unmarshal([]byte(raw), &data)
 			return data

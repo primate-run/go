@@ -2,11 +2,51 @@ package postlude
 
 import (
 	"encoding/json"
+	"fmt"
+	"sync"
 	"syscall/js"
 
 	"github.com/primate-run/go/core"
-	"github.com/primate-run/go/route/internal/registry"
+	"github.com/primate-run/go/route"
 )
+
+var (
+	mu  sync.Mutex
+	reg = map[string]route.Handler{}
+)
+
+func init() {
+	// wire up
+	route.Register = register
+	route.Commit = Install
+}
+
+func register(verb string, h route.Handler) route.Handler {
+	mu.Lock()
+	defer mu.Unlock()
+	if _, exists := reg[verb]; exists {
+		panic(fmt.Sprintf("route: duplicate handler for %s", verb))
+	}
+	reg[verb] = h
+	return h
+}
+
+func lookup(verb string) (route.Handler, bool) {
+	mu.Lock()
+	defer mu.Unlock()
+	h, ok := reg[verb]
+	return h, ok
+}
+
+func verbs() []string {
+	mu.Lock()
+	defer mu.Unlock()
+	out := make([]string, 0, len(reg))
+	for k := range reg {
+		out = append(out, k)
+	}
+	return out
+}
 
 func makeURL(request js.Value) core.URL {
 	url := request.Get("url")
@@ -30,7 +70,6 @@ func makeURL(request js.Value) core.URL {
 }
 
 func makeRequest(request js.Value) core.Request {
-	// build from your facade (same as you do today)
 	return core.Request{
 		Url:     makeURL(request),
 		Body:    core.NewBodyFromJS(request.Get("body")),
@@ -49,7 +88,7 @@ func decodeMap(s string) map[string]any {
 	return m
 }
 
-// Install sets global JS entry points for the host.
+// install sets global JS entry points for the host
 func Install() {
 	js.Global().Set("__primate_handle", js.FuncOf(func(_ js.Value, args []js.Value) any {
 		if len(args) < 2 {
@@ -58,7 +97,7 @@ func Install() {
 		verb := args[0].String()
 		reqObj := args[1]
 
-		h, ok := registry.Lookup(verb)
+		h, ok := lookup(verb)
 		if !ok {
 			return `{"error":"no handler for ` + verb + `"}`
 		}
@@ -73,9 +112,9 @@ func Install() {
 	}))
 
 	// publish registered verbs for debugging
-	verbs := registry.Verbs()
-	arr := js.Global().Get("Array").New(len(verbs))
-	for i, v := range verbs {
+	verbList := verbs()
+	arr := js.Global().Get("Array").New(len(verbList))
+	for i, v := range verbList {
 		arr.SetIndex(i, v)
 	}
 	js.Global().Set("__primate_verbs", arr)

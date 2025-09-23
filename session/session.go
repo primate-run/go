@@ -22,9 +22,6 @@ type SessionType struct {
 func Session() SessionType {
 	var session = js.Global().Get("PRMT_SESSION")
 
-	data := make(core.Dict)
-	json.Unmarshal([]byte(session.Get("data").String()), &data)
-
 	return SessionType{
 		Id:     session.Get("id").String(),
 		Exists: session.Get("exists").Bool(),
@@ -57,4 +54,32 @@ func Session() SessionType {
 			session.Get("destroy").Invoke()
 		},
 	}
+}
+
+func Id() string {
+	return Session().Id
+}
+
+func Exists() bool {
+	return Session().Exists
+}
+
+func Create(data SessionData) {
+	Session().Create(data)
+}
+
+func Get() SessionData {
+	return Session().Get()
+}
+
+func Try() SessionData {
+	return Session().Try()
+}
+
+func Set(data SessionData) {
+	Session().Set(data)
+}
+
+func Destroy() {
+	Session().Destroy()
 }

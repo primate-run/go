@@ -2,17 +2,15 @@ package pema
 
 import (
 	"fmt"
-	"maps"
 	"strconv"
 
 	"github.com/primate-run/go/types"
 )
 
-type Fields = types.Object[Field]
 type Dict = types.Dict
 
-type Field interface {
-	Parse(value any, coerce bool) (any, error)
+type Field[T any] interface {
+	Parse(value any, coerce bool) (T, error)
 }
 
 type StringType struct{}
@@ -112,20 +110,49 @@ func (FloatType) Parse(value any, coerce bool) (float64, error) {
 	return 0.0, fmt.Errorf("expected float64, got %T", value)
 }
 
-func String() StringType   { return StringType{} }
-func Boolean() BooleanType { return BooleanType{} }
-func Int() IntType         { return IntType{} }
-func Int64() Int64Type     { return Int64Type{} }
-func Float() FloatType     { return FloatType{} }
+func String() Field[string] { return StringType{} }
+func Boolean() Field[bool]  { return BooleanType{} }
+func Int() Field[int]       { return IntType{} }
+func Int64() Field[int64]   { return Int64Type{} }
+func Float() Field[float64] { return FloatType{} }
+
+type AnyField interface {
+	parse(value any, coerce bool) (any, error)
+}
+
+type fieldWrapper[T any] struct {
+	field Field[T]
+}
+
+func (w fieldWrapper[T]) parse(value any, coerce bool) (any, error) {
+	return w.field.Parse(value, coerce)
+}
+
+type Fields = map[string]AnyField
 
 type SchemaBuilder struct {
 	fields Fields
 }
 
-func Schema(fields Fields) *SchemaBuilder {
-	return &SchemaBuilder{
-		fields: maps.Clone(fields),
+func Schema(fields map[string]any) *SchemaBuilder {
+	wrapped := make(Fields)
+	for name, field := range fields {
+		switch f := field.(type) {
+		case Field[string]:
+			wrapped[name] = fieldWrapper[string]{f}
+		case Field[bool]:
+			wrapped[name] = fieldWrapper[bool]{f}
+		case Field[int]:
+			wrapped[name] = fieldWrapper[int]{f}
+		case Field[int64]:
+			wrapped[name] = fieldWrapper[int64]{f}
+		case Field[float64]:
+			wrapped[name] = fieldWrapper[float64]{f}
+		default:
+			panic(fmt.Sprintf("unsupported field type: %T", field))
+		}
 	}
+	return &SchemaBuilder{fields: wrapped}
 }
 
 func (s *SchemaBuilder) Parse(data Dict, args ...bool) (Dict, error) {
@@ -141,7 +168,7 @@ func (s *SchemaBuilder) Parse(data Dict, args ...bool) (Dict, error) {
 			value = ""
 		}
 
-		parsed, err := field.Parse(value, coerce)
+		parsed, err := field.parse(value, coerce)
 		if err != nil {
 			return nil, fmt.Errorf("parsing failed for field '%s': %w", name, err)
 		}

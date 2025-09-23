@@ -3,6 +3,8 @@ package core
 import (
 	"fmt"
 	"maps"
+
+	"github.com/primate-run/go/pema"
 )
 
 type RequestBag struct {
@@ -10,7 +12,7 @@ type RequestBag struct {
 	name     string
 }
 
-func NewRequestBag(data map[string]any, name string) *RequestBag {
+func NewRequestBag(data Dict, name string) *RequestBag {
 	contents := make(map[string]string)
 	for k, v := range data {
 		if v != nil {
@@ -45,6 +47,14 @@ func (rb *RequestBag) Try(key string) string {
 func (rb *RequestBag) Has(key string) bool {
 	_, exists := rb.contents[key]
 	return exists
+}
+
+func (rb *RequestBag) Parse(schema *pema.SchemaBuilder, coerce ...bool) (Dict, error) {
+	data := make(Dict)
+	for k, v := range rb.contents {
+		data[k] = v
+	}
+	return schema.Parse(data, coerce...)
 }
 
 func (rb *RequestBag) ToJSON() map[string]string {

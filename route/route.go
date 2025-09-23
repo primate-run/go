@@ -3,13 +3,16 @@ package route
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/primate-run/go/core"
 	"sync"
 	"syscall/js"
+
+	"github.com/primate-run/go/core"
+	"github.com/primate-run/go/types"
 )
 
 type Request = core.Request
 type Handler = func(Request) any
+type Dict = types.Dict
 
 var (
 	mu          sync.Mutex
@@ -39,7 +42,7 @@ func Trace(h Handler) Handler   { return register("TRACE", h) }
 
 func makeURL(request js.Value) core.URL {
 	url := request.Get("url")
-	searchParams := make(map[string]any)
+	searchParams := make(Dict)
 	json.Unmarshal([]byte(request.Get("searchParams").String()), &searchParams)
 
 	return core.URL{
@@ -70,7 +73,7 @@ func makeRequest(request js.Value) core.Request {
 }
 
 func makeRequestBag(jsonStr, name string) *core.RequestBag {
-	data := make(map[string]any)
+	data := make(Dict)
 	if jsonStr != "" {
 		json.Unmarshal([]byte(jsonStr), &data)
 	}

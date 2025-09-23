@@ -11,7 +11,7 @@ type URL struct {
 	Port         string
 	Pathname     string
 	Search       string
-	SearchParams map[string]any
+	SearchParams Dict
 	Hash         string
 }
 

@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"syscall/js"
 
-	"github.com/primate-run/go/core"
+	"github.com/primate-run/go/types"
 )
 
-func tryMap(array []core.Dict, position uint8, fallback core.Dict) core.Dict {
+type Dict = types.Dict
+
+func tryMap(array []Dict, position uint8, fallback Dict) Dict {
 	if len(array) <= int(position) {
 		return fallback
 	}
@@ -21,7 +23,7 @@ func tryInt(array []int, position uint8, fallback int) int {
 	return array[position]
 }
 
-func serialize(data map[string]any) string {
+func serialize(data Dict) string {
 	if data == nil {
 		return ""
 	}
@@ -32,12 +34,12 @@ func serialize(data map[string]any) string {
 	return string(serialized)
 }
 
-func View(component string, props core.Dict, options ...core.Dict) any {
+func View(component string, props Dict, options ...Dict) any {
 	var serde_props = serialize(props)
-	var serde_options = serialize(tryMap(options, 0, core.Dict{}))
+	var serde_options = serialize(tryMap(options, 0, Dict{}))
 
 	return js.FuncOf(func(this js.Value, args []js.Value) any {
-		return map[string]any{
+		return Dict{
 			"handler":   "view",
 			"component": component,
 			"props":     serde_props,
@@ -50,7 +52,7 @@ func Redirect(location string, ints ...int) any {
 	var status = tryInt(ints, 0, 302)
 
 	return js.FuncOf(func(this js.Value, args []js.Value) any {
-		return map[string]any{
+		return Dict{
 			"handler":  "redirect",
 			"location": location,
 			"status":   status,
@@ -58,11 +60,11 @@ func Redirect(location string, ints ...int) any {
 	})
 }
 
-func Error(options ...core.Dict) any {
-	var serde_options = serialize(tryMap(options, 0, core.Dict{}))
+func Error(options ...Dict) any {
+	var serde_options = serialize(tryMap(options, 0, Dict{}))
 
 	return js.FuncOf(func(this js.Value, args []js.Value) any {
-		return map[string]any{
+		return Dict{
 			"handler": "error",
 			"options": serde_options,
 		}

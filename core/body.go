@@ -6,6 +6,8 @@ import (
 	"io"
 	"sync"
 	"syscall/js"
+
+	"github.com/primate-run/go/pema"
 )
 
 type Kind int
@@ -75,38 +77,60 @@ func (body *Body) Text() (string, error) {
 	return body.text, body.textErr
 }
 
-// JSON -> unmarshal into dst (from jsonSync)
-func (body *Body) JSON(dst any) error {
+// JSON returns parsed JSON data, optionally validated with schema
+func (body *Body) JSON(schema ...*pema.SchemaBuilder) (Dict, error) {
 	if body.kind != KindJSON {
-		return errors.New("expected json body")
+		return nil, errors.New("expected json body")
 	}
 	body.onceJSON.Do(func() {
 		s := body.jsObj.Call("jsonSync").String()
 		body.jsonRaw = []byte(s)
 	})
 	if body.jsonErr != nil {
-		return body.jsonErr
+		return nil, body.jsonErr
 	}
+
+	var data Dict
 	dec := json.NewDecoder(bytesReader(body.jsonRaw))
-	return dec.Decode(dst)
+	if err := dec.Decode(&data); err != nil {
+		return nil, err
+	}
+
+	// If schema provided, validate the data
+	if len(schema) > 0 {
+		return schema[0].Parse(data, true) // default to coercion
+	}
+
+	return data, nil
 }
 
-// Fields -> unmarshal fields JSON into dst (from fieldsSync)
-func (body *Body) Fields(dst any) error {
+// Fields returns parsed form fields, optionally validated with schema
+func (body *Body) Fields(schema ...*pema.SchemaBuilder) (Dict, error) {
 	if body.kind != KindFields {
-		return errors.New("expected fields body")
+		return nil, errors.New("expected fields body")
 	}
 	body.onceFields.Do(func() {
 		s := body.jsObj.Call("fieldsSync").String()
 		body.fieldsRaw = []byte(s)
 	})
 	if body.fieldsErr != nil {
-		return body.fieldsErr
+		return nil, body.fieldsErr
 	}
-	return json.Unmarshal(body.fieldsRaw, dst)
+
+	var data Dict
+	if err := json.Unmarshal(body.fieldsRaw, &data); err != nil {
+		return nil, err
+	}
+
+	// If schema provided, validate the data
+	if len(schema) > 0 {
+		return schema[0].Parse(data, true)
+	}
+
+	return data, nil
 }
 
-// UploadFile describes a file from multipart fields (bytes come from filesSync)
+// describes a file from multipart fields (bytes come from filesSync)
 type UploadFile struct {
 	Field string
 	Name  string
@@ -126,7 +150,8 @@ func (body *Body) Files() ([]UploadFile, error) {
 	}
 	n := arr.Length()
 	out := make([]UploadFile, 0, n)
-	for i := 0; i < n; i++ {
+
+	for i := range n {
 		it := arr.Index(i)
 		field := it.Get("field").String()
 		name := it.Get("name").String()
@@ -139,6 +164,7 @@ func (body *Body) Files() ([]UploadFile, error) {
 			Field: field, Name: name, Type: typ, Size: size, Bytes: buf,
 		})
 	}
+
 	return out, nil
 }
 

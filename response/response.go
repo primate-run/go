@@ -39,7 +39,7 @@ func View(component string, props Dict, options ...Dict) any {
 	var serde_options = serialize(tryMap(options, 0, Dict{}))
 
 	return js.FuncOf(func(this js.Value, args []js.Value) any {
-		return Dict{
+		return map[string]any{
 			"handler":   "view",
 			"component": component,
 			"props":     serde_props,
@@ -52,7 +52,7 @@ func Redirect(location string, ints ...int) any {
 	var status = tryInt(ints, 0, 302)
 
 	return js.FuncOf(func(this js.Value, args []js.Value) any {
-		return Dict{
+		return map[string]any{
 			"handler":  "redirect",
 			"location": location,
 			"status":   status,
@@ -64,7 +64,7 @@ func Error(options ...Dict) any {
 	var serde_options = serialize(tryMap(options, 0, Dict{}))
 
 	return js.FuncOf(func(this js.Value, args []js.Value) any {
-		return Dict{
+		return map[string]any{
 			"handler": "error",
 			"options": serde_options,
 		}

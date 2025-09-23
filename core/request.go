@@ -18,8 +18,8 @@ type URL struct {
 type Request struct {
 	Url     URL
 	Body    *Body
-	Path    map[string]any
-	Query   map[string]any
-	Headers map[string]any
-	Cookies map[string]any
+	Path    *RequestBag
+	Query   *RequestBag
+	Headers *RequestBag
+	Cookies *RequestBag
 }

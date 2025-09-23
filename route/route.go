@@ -62,19 +62,19 @@ func makeRequest(request js.Value) core.Request {
 	return core.Request{
 		Url:     makeURL(request),
 		Body:    core.NewBodyFromJS(request.Get("body")),
-		Path:    decodeMap(request.Get("path").String()),
-		Query:   decodeMap(request.Get("query").String()),
-		Headers: decodeMap(request.Get("headers").String()),
-		Cookies: decodeMap(request.Get("cookies").String()),
+		Path:    makeRequestBag(request.Get("path").String(), "path"),
+		Query:   makeRequestBag(request.Get("query").String(), "query"),
+		Headers: makeRequestBag(request.Get("headers").String(), "headers"),
+		Cookies: makeRequestBag(request.Get("cookies").String(), "cookies"),
 	}
 }
 
-func decodeMap(s string) map[string]any {
-	m := map[string]any{}
-	if s != "" {
-		_ = json.Unmarshal([]byte(s), &m)
+func makeRequestBag(jsonStr, name string) *core.RequestBag {
+	data := make(map[string]any)
+	if jsonStr != "" {
+		json.Unmarshal([]byte(jsonStr), &data)
 	}
-	return m
+	return core.NewRequestBag(data, name)
 }
 
 func Commit() {

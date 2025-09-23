@@ -1,4 +1,4 @@
-package request
+package response
 
 import (
 	"encoding/json"
@@ -25,18 +25,15 @@ func serialize(data map[string]any) string {
 	if data == nil {
 		return ""
 	}
-
 	serialized, err := json.Marshal(data)
 	if err != nil {
 		return ""
 	}
-
 	return string(serialized)
 }
 
 func View(component string, props core.Dict, options ...core.Dict) any {
 	var serde_props = serialize(props)
-
 	var serde_options = serialize(tryMap(options, 0, core.Dict{}))
 
 	return js.FuncOf(func(this js.Value, args []js.Value) any {

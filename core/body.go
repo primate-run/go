@@ -16,7 +16,7 @@ const (
 	KindNone Kind = iota
 	KindText
 	KindJSON
-	KindFields
+	KindForm
 	KindBin
 )
 
@@ -26,8 +26,8 @@ func parseKind(s string) Kind {
 		return KindText
 	case "json":
 		return KindJSON
-	case "fields":
-		return KindFields
+	case "form":
+		return KindForm
 	case "bin":
 		return KindBin
 	default:
@@ -47,9 +47,9 @@ type Body struct {
 	jsonRaw  []byte
 	jsonErr  error
 
-	onceFields sync.Once
-	fieldsRaw  []byte
-	fieldsErr  error
+	onceForm sync.Once
+	formRaw  []byte
+	formErr  error
 
 	onceBin sync.Once
 	bin     []byte
@@ -104,21 +104,21 @@ func (body *Body) JSON(schema ...*pema.SchemaBuilder) (Dict, error) {
 	return data, nil
 }
 
-// Fields returns parsed form fields, optionally validated with schema
-func (body *Body) Fields(schema ...*pema.SchemaBuilder) (Dict, error) {
-	if body.kind != KindFields {
-		return nil, errors.New("expected fields body")
+// returns parsed form, optionally validated with schema
+func (body *Body) Form(schema ...*pema.SchemaBuilder) (Dict, error) {
+	if body.kind != KindForm {
+		return nil, errors.New("expected form body")
 	}
-	body.onceFields.Do(func() {
-		s := body.jsObj.Call("fieldsSync").String()
-		body.fieldsRaw = []byte(s)
+	body.onceForm.Do(func() {
+		s := body.jsObj.Call("formSync").String()
+		body.formRaw = []byte(s)
 	})
-	if body.fieldsErr != nil {
-		return nil, body.fieldsErr
+	if body.formErr != nil {
+		return nil, body.formErr
 	}
 
 	var data Dict
-	if err := json.Unmarshal(body.fieldsRaw, &data); err != nil {
+	if err := json.Unmarshal(body.formRaw, &data); err != nil {
 		return nil, err
 	}
 
@@ -141,8 +141,8 @@ type UploadFile struct {
 
 // Files -> read filesSync() array [{field,name,type,size,bytes:Uint8Array}]
 func (body *Body) Files() ([]UploadFile, error) {
-	if body.kind != KindFields {
-		return nil, errors.New("expected fields body")
+	if body.kind != KindForm {
+		return nil, errors.New("expected form body")
 	}
 	arr := body.jsObj.Call("filesSync")
 	if arr.IsUndefined() || arr.IsNull() {

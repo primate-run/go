@@ -3,6 +3,7 @@ package route
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"syscall/js"
 
@@ -15,18 +16,23 @@ type Handler = func(Request) any
 type Dict = types.Dict
 
 var (
-	mu          sync.Mutex
-	reg         = map[string]Handler{}
-	initialized bool
+	mu      sync.Mutex
+	scopes  = map[string]map[string]Handler{}
+	pending = []struct {
+		verb    string
+		handler Handler
+	}{}
 )
 
 func register(verb string, h Handler) Handler {
 	mu.Lock()
 	defer mu.Unlock()
-	if _, exists := reg[verb]; exists {
-		panic(fmt.Sprintf("route: duplicate handler for %s", verb))
-	}
-	reg[verb] = h
+
+	pending = append(pending, struct {
+		verb    string
+		handler Handler
+	}{verb, h})
+
 	return h
 }
 
@@ -39,6 +45,22 @@ func Head(h Handler) Handler    { return register("HEAD", h) }
 func Connect(h Handler) Handler { return register("CONNECT", h) }
 func Options(h Handler) Handler { return register("OPTIONS", h) }
 func Trace(h Handler) Handler   { return register("TRACE", h) }
+
+func Registry(id string) []string {
+	mu.Lock()
+	defer mu.Unlock()
+
+	registry := scopes[id]
+	if registry == nil {
+		return []string{}
+	}
+
+	verbs := make([]string, 0, len(registry))
+	for verb := range registry {
+		verbs = append(verbs, verb)
+	}
+	return verbs
+}
 
 func makeURL(request js.Value) core.URL {
 	url := request.Get("url")
@@ -80,46 +102,70 @@ func makeRequestBag(jsonStr, name string) *core.RequestBag {
 	return core.NewRequestBag(data, name)
 }
 
-func Commit() {
+func CallJS(scope_id, verb string, request js.Value) any {
+	mu.Lock()
+	registry := scopes[scope_id]
+	if registry == nil {
+		mu.Unlock()
+		return `{"error":"no scope ` + scope_id + `"}`
+	}
+	h, ok := registry[verb]
+	mu.Unlock()
+
+	if !ok {
+		return `{"error":"no handler for ` + verb + ` in scope ` + scope_id + `"}`
+	}
+
+	response := h(makeRequest(request))
+
+	if fn, ok := response.(js.Func); ok {
+		return fn.Invoke()
+	}
+
+	b, _ := json.Marshal(response)
+	return string(b)
+}
+
+func Commit(scope_id string) {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if initialized {
-		return
+	if scopes[scope_id] == nil {
+		scopes[scope_id] = make(map[string]Handler)
 	}
-	initialized = true
 
-	js.Global().Set("__primate_handle", js.FuncOf(func(_ js.Value, args []js.Value) any {
+	for _, p := range pending {
+		if _, exists := scopes[scope_id][p.verb]; exists {
+			panic(fmt.Sprintf("route: duplicate handler for %s in scope %s", p.verb, scope_id))
+		}
+		scopes[scope_id][p.verb] = p.handler
+	}
+	pending = nil
+
+	safe_scope_id := strings.ReplaceAll(scope_id, "/", "_")
+	call_go := "__primate_call_go_" + safe_scope_id
+	registry_name := "__primate_go_registry_" + safe_scope_id
+
+	js.Global().Set(call_go, js.FuncOf(func(_ js.Value, args []js.Value) any {
 		if len(args) < 2 {
-			return "null"
+			return `{"error":"insufficient arguments"}`
 		}
 		verb := args[0].String()
-		reqObj := args[1]
-
-		mu.Lock()
-		h, ok := reg[verb]
-		mu.Unlock()
-
-		if !ok {
-			return `{"error":"no handler for ` + verb + `"}`
-		}
-		goReq := makeRequest(reqObj)
-		resp := h(goReq)
-
-		if fn, ok := resp.(js.Func); ok {
-			return fn
-		}
-		b, _ := json.Marshal(resp)
-		return string(b)
+		request := args[1]
+		return CallJS(scope_id, verb, request)
 	}))
 
-	verbs := make([]string, 0, len(reg))
-	for k := range reg {
-		verbs = append(verbs, k)
+	js.Global().Set(registry_name, js.FuncOf(func(_ js.Value, args []js.Value) any {
+		verbs := Registry(scope_id)
+		arr := js.Global().Get("Array").New(len(verbs))
+		for i, v := range verbs {
+			arr.SetIndex(i, v)
+		}
+		return arr
+	}))
+
+	ready_callback := "__primate_go_ready_" + safe_scope_id
+	if cb := js.Global().Get(ready_callback); !cb.IsUndefined() {
+		cb.Invoke()
 	}
-	arr := js.Global().Get("Array").New(len(verbs))
-	for i, v := range verbs {
-		arr.SetIndex(i, v)
-	}
-	js.Global().Set("__primate_verbs", arr)
 }

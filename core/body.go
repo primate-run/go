@@ -6,8 +6,6 @@ import (
 	"io"
 	"sync"
 	"syscall/js"
-
-	"github.com/primate-run/go/pema"
 )
 
 type Kind int
@@ -17,7 +15,7 @@ const (
 	KindText
 	KindJSON
 	KindForm
-	KindBin
+	KindBinary
 )
 
 func parseKind(s string) Kind {
@@ -28,8 +26,8 @@ func parseKind(s string) Kind {
 		return KindJSON
 	case "form":
 		return KindForm
-	case "bin":
-		return KindBin
+	case "binary":
+		return KindBinary
 	default:
 		return KindNone
 	}
@@ -77,8 +75,8 @@ func (body *Body) Text() (string, error) {
 	return body.text, body.textErr
 }
 
-// JSON returns parsed JSON data, optionally validated with schema
-func (body *Body) JSON(schema ...*pema.SchemaBuilder) (Dict, error) {
+// return JSON
+func (body *Body) JSON() (Dict, error) {
 	if body.kind != KindJSON {
 		return nil, errors.New("expected json body")
 	}
@@ -96,16 +94,11 @@ func (body *Body) JSON(schema ...*pema.SchemaBuilder) (Dict, error) {
 		return nil, err
 	}
 
-	// If schema provided, validate the data
-	if len(schema) > 0 {
-		return schema[0].Parse(data, true) // default to coercion
-	}
-
 	return data, nil
 }
 
-// returns parsed form, optionally validated with schema
-func (body *Body) Form(schema ...*pema.SchemaBuilder) (Dict, error) {
+// return form
+func (body *Body) Form() (Dict, error) {
 	if body.kind != KindForm {
 		return nil, errors.New("expected form body")
 	}
@@ -120,11 +113,6 @@ func (body *Body) Form(schema ...*pema.SchemaBuilder) (Dict, error) {
 	var data Dict
 	if err := json.Unmarshal(body.formRaw, &data); err != nil {
 		return nil, err
-	}
-
-	// If schema provided, validate the data
-	if len(schema) > 0 {
-		return schema[0].Parse(data, true)
 	}
 
 	return data, nil
@@ -170,7 +158,7 @@ func (body *Body) Files() ([]UploadFile, error) {
 
 // Binary -> data + mime (from binarySync/binaryTypeSync)
 func (body *Body) Binary() ([]byte, string, error) {
-	if body.kind != KindBin {
+	if body.kind != KindBinary {
 		return nil, "", errors.New("expected binary body")
 	}
 	body.onceBin.Do(func() {

@@ -1,3 +1,5 @@
+//go:build js && wasm
+
 package route
 
 import (
@@ -7,12 +9,11 @@ import (
 	"syscall/js"
 
 	"github.com/primate-run/go/core"
-	"github.com/primate-run/go/types"
 )
 
 type Request = core.Request
+type Props = map[string]any
 type Handler = func(Request) any
-type Dict = types.Dict
 
 type ContentType string
 
@@ -21,7 +22,7 @@ const (
 	Text      ContentType = "text/plain"
 	Form      ContentType = "application/x-www-form-urlencoded"
 	Multipart ContentType = "multipart/form-data"
-	Binary    ContentType = "application/octet-stream"
+	Blob      ContentType = "application/octet-stream"
 )
 
 type With struct {

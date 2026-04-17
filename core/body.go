@@ -1,3 +1,5 @@
+//go:build js && wasm
+
 package core
 
 import (
@@ -139,24 +141,29 @@ type UploadFile struct {
 	Bytes []byte
 }
 
-func (body *Body) Multipart() (Dict, []UploadFile, error) {
+type Multipart struct {
+	Form  Dict
+	Files []UploadFile
+}
+
+func (body *Body) Multipart() (Multipart, error) {
 	if body.kind == KindNone {
-		return nil, nil, errors.New("no content-type declared; use route.With{ContentType: route.Multipart}")
+		return Multipart{}, errors.New("no content-type declared; use route.With{ContentType: route.Multipart}")
 	}
 	if body.kind != KindMultipart {
-		return nil, nil, errors.New("expected multipart body; declare route.With{ContentType: route.Multipart}")
+		return Multipart{}, errors.New("expected multipart body; declare route.With{ContentType: route.Multipart}")
 	}
 	body.onceMultipart.Do(func() {
 		s := body.jsObj.Call("formSync").String()
 		body.multipartRaw = []byte(s)
 	})
 	if body.multipartErr != nil {
-		return nil, nil, body.multipartErr
+		return Multipart{}, body.multipartErr
 	}
 
 	var form Dict
 	if err := json.Unmarshal(body.multipartRaw, &form); err != nil {
-		return nil, nil, err
+		return Multipart{}, err
 	}
 
 	arr := body.jsObj.Call("filesSync")
@@ -179,7 +186,7 @@ func (body *Body) Multipart() (Dict, []UploadFile, error) {
 		}
 	}
 
-	return form, files, nil
+	return Multipart{Form: form, Files: files}, nil
 }
 
 type Blob struct {

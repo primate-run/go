@@ -1,3 +1,5 @@
+//go:build js && wasm
+
 package types
 
 type Object[T any] map[string]T

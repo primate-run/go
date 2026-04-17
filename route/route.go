@@ -81,7 +81,7 @@ func (w With) Trace(h Handler) Handler   { return register("TRACE", h, w) }
 
 func makeURL(request js.Value) core.URL {
 	url := request.Get("url")
-	searchParams := make(Dict)
+	searchParams := make(core.Dict)
 	json.Unmarshal([]byte(request.Get("searchParams").String()), &searchParams)
 
 	return core.URL{
@@ -112,7 +112,7 @@ func makeRequest(request js.Value, contentType string) core.Request {
 }
 
 func makeRequestBag(jsonStr, name string) *core.RequestBag {
-	data := make(Dict)
+	data := make(core.Dict)
 	if jsonStr != "" {
 		json.Unmarshal([]byte(jsonStr), &data)
 	}

@@ -15,19 +15,22 @@ const (
 	KindText
 	KindJSON
 	KindForm
-	KindBinary
+	KindMultipart
+	KindBlob
 )
 
 func parseKind(s string) Kind {
 	switch s {
-	case "text":
+	case "text/plain":
 		return KindText
-	case "json":
+	case "application/json":
 		return KindJSON
-	case "form":
+	case "application/x-www-form-urlencoded":
 		return KindForm
-	case "binary":
-		return KindBinary
+	case "multipart/form-data":
+		return KindMultipart
+	case "application/octet-stream":
+		return KindBlob
 	default:
 		return KindNone
 	}
@@ -49,25 +52,31 @@ type Body struct {
 	formRaw  []byte
 	formErr  error
 
-	onceBin sync.Once
-	bin     []byte
-	binType string
-	binErr  error
+	onceMultipart sync.Once
+	multipartRaw  []byte
+	multipartErr  error
+
+	onceBlob sync.Once
+	blobData []byte
+	blobType string
+	blobErr  error
 }
 
-func NewBodyFromJS(v js.Value) *Body {
+func NewBodyFromJS(v js.Value, contentType string) *Body {
 	return &Body{
 		jsObj: v,
-		kind:  parseKind(v.Get("type").String()),
+		kind:  parseKind(contentType),
 	}
 }
 
 func (body *Body) Kind() Kind { return body.kind }
 
-// Text -> string (from textSync)
 func (body *Body) Text() (string, error) {
+	if body.kind == KindNone {
+		return "", errors.New("no content-type declared; use route.With{ContentType: route.Text}")
+	}
 	if body.kind != KindText {
-		return "", errors.New("expected text body")
+		return "", errors.New("expected text body; declare route.With{ContentType: route.Text}")
 	}
 	body.onceText.Do(func() {
 		body.text = body.jsObj.Call("textSync").String()
@@ -75,10 +84,12 @@ func (body *Body) Text() (string, error) {
 	return body.text, body.textErr
 }
 
-// return JSON
 func (body *Body) JSON() (Dict, error) {
+	if body.kind == KindNone {
+		return nil, errors.New("no content-type declared; use route.With{ContentType: route.JSON}")
+	}
 	if body.kind != KindJSON {
-		return nil, errors.New("expected json body")
+		return nil, errors.New("expected json body; declare route.With{ContentType: route.JSON}")
 	}
 	body.onceJSON.Do(func() {
 		s := body.jsObj.Call("jsonSync").String()
@@ -97,10 +108,12 @@ func (body *Body) JSON() (Dict, error) {
 	return data, nil
 }
 
-// return form
 func (body *Body) Form() (Dict, error) {
+	if body.kind == KindNone {
+		return nil, errors.New("no content-type declared; use route.With{ContentType: route.Form}")
+	}
 	if body.kind != KindForm {
-		return nil, errors.New("expected form body")
+		return nil, errors.New("expected form body; declare route.With{ContentType: route.Form}")
 	}
 	body.onceForm.Do(func() {
 		s := body.jsObj.Call("formSync").String()
@@ -118,7 +131,6 @@ func (body *Body) Form() (Dict, error) {
 	return data, nil
 }
 
-// describes a file from multipart fields (bytes come from filesSync)
 type UploadFile struct {
 	Field string
 	Name  string
@@ -127,52 +139,72 @@ type UploadFile struct {
 	Bytes []byte
 }
 
-// Files -> read filesSync() array [{field,name,type,size,bytes:Uint8Array}]
-func (body *Body) Files() ([]UploadFile, error) {
-	if body.kind != KindForm {
-		return nil, errors.New("expected form body")
+func (body *Body) Multipart() (Dict, []UploadFile, error) {
+	if body.kind == KindNone {
+		return nil, nil, errors.New("no content-type declared; use route.With{ContentType: route.Multipart}")
 	}
+	if body.kind != KindMultipart {
+		return nil, nil, errors.New("expected multipart body; declare route.With{ContentType: route.Multipart}")
+	}
+	body.onceMultipart.Do(func() {
+		s := body.jsObj.Call("formSync").String()
+		body.multipartRaw = []byte(s)
+	})
+	if body.multipartErr != nil {
+		return nil, nil, body.multipartErr
+	}
+
+	var form Dict
+	if err := json.Unmarshal(body.multipartRaw, &form); err != nil {
+		return nil, nil, err
+	}
+
 	arr := body.jsObj.Call("filesSync")
-	if arr.IsUndefined() || arr.IsNull() {
-		return nil, nil
+	var files []UploadFile
+	if !arr.IsUndefined() && !arr.IsNull() {
+		n := arr.Length()
+		files = make([]UploadFile, 0, n)
+		for i := range n {
+			it := arr.Index(i)
+			field := it.Get("field").String()
+			name := it.Get("name").String()
+			typ := it.Get("type").String()
+			size := int64(it.Get("size").Int())
+			u8 := it.Get("bytes")
+			buf := make([]byte, u8.Get("length").Int())
+			js.CopyBytesToGo(buf, u8)
+			files = append(files, UploadFile{
+				Field: field, Name: name, Type: typ, Size: size, Bytes: buf,
+			})
+		}
 	}
-	n := arr.Length()
-	out := make([]UploadFile, 0, n)
 
-	for i := range n {
-		it := arr.Index(i)
-		field := it.Get("field").String()
-		name := it.Get("name").String()
-		typ := it.Get("type").String()
-		size := int64(it.Get("size").Int())
-		u8 := it.Get("bytes")
-		buf := make([]byte, u8.Get("length").Int())
-		js.CopyBytesToGo(buf, u8)
-		out = append(out, UploadFile{
-			Field: field, Name: name, Type: typ, Size: size, Bytes: buf,
-		})
-	}
-
-	return out, nil
+	return form, files, nil
 }
 
-// Binary -> data + mime (from binarySync/binaryTypeSync)
-func (body *Body) Binary() ([]byte, string, error) {
-	if body.kind != KindBinary {
-		return nil, "", errors.New("expected binary body")
+type Blob struct {
+	Data []byte
+	Type string
+}
+
+func (body *Body) Blob() (Blob, error) {
+	if body.kind == KindNone {
+		return Blob{}, errors.New("no content-type declared; use route.With{ContentType: route.Blob}")
 	}
-	body.onceBin.Do(func() {
-		u8 := body.jsObj.Call("binarySync")
+	if body.kind != KindBlob {
+		return Blob{}, errors.New("expected blob body; declare route.With{ContentType: route.Blob}")
+	}
+	body.onceBlob.Do(func() {
+		u8 := body.jsObj.Call("blobSync")
 		n := u8.Get("length").Int()
 		buf := make([]byte, n)
 		js.CopyBytesToGo(buf, u8)
-		body.bin = buf
-		body.binType = body.jsObj.Call("binaryTypeSync").String()
+		body.blobData = buf
+		body.blobType = body.jsObj.Call("blobTypeSync").String()
 	})
-	return body.bin, body.binType, body.binErr
+	return Blob{Data: body.blobData, Type: body.blobType}, body.blobErr
 }
 
-// tiny reader to avoid bringing in bytes pkg here
 type byteReader []byte
 
 func (r byteReader) Read(p []byte) (int, error) {
@@ -182,4 +214,5 @@ func (r byteReader) Read(p []byte) (int, error) {
 	}
 	return n, io.EOF
 }
+
 func bytesReader(b []byte) io.Reader { return byteReader(b) }

@@ -61,7 +61,11 @@ func (IntType) Parse(value any, coerce bool) (int, error) {
 			if v == "" {
 				return 0, nil
 			}
-			return strconv.Atoi(v)
+			i, err := strconv.Atoi(v)
+			if err != nil {
+				return 0, fmt.Errorf("cannot parse '%s' as integer", v)
+			}
+			return i, nil
 		default:
 			return 0, fmt.Errorf("cannot coerce %T to int", value)
 		}
@@ -104,7 +108,11 @@ func (FloatType) Parse(value any, coerce bool) (float64, error) {
 			if v == "" {
 				return 0.0, nil
 			}
-			return strconv.ParseFloat(v, 64)
+			f, err := strconv.ParseFloat(v, 64)
+			if err != nil {
+				return 0.0, fmt.Errorf("cannot parse '%s' as float", v)
+			}
+			return f, nil
 		default:
 			return 0.0, fmt.Errorf("cannot coerce %T to float", value)
 		}
